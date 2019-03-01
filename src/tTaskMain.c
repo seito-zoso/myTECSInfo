@@ -191,11 +191,17 @@ eBody_main(CELLIDX idx)
     printf( "started\n" );
 
     printf( "--- namespace traverse test ---\n" );
+    /* ルートディレクトリへのDescを取得 */
     if( cTECSInfo_findNamespace( "::", &NSdesc ) != E_OK ){
         printf( "Cannot find :: (root) namespace\n" );
         exit(1);
     }
+    /* そのDescを用いてtraverse */
     traverse_namespace( p_cellcb, NSdesc, 0 );
+    /* 結論：何ができるか
+     *  namespaceを指定すればそこにあるセルタイプを探し出してくれる。
+     */
+
 
     printf( "--- region traverse test ---\n" );
     if( cTECSInfo_findRegion( "::", &RGNdesc ) != E_OK ){
@@ -223,65 +229,54 @@ eBody_main(CELLIDX idx)
  *   これより下に非受け口関数を書きます
  * #[</POSTAMBLE>]#*/
 
-static void
-print_signature_by_path( CELLCB *p_cellcb, char_t *path )
-{
-    Descriptor( nTECSInfo_sSignatureInfo )  desc;
-    ER    ercd;
-
-    printf( "print_signature_by_path( path=\"%s\" )\n", path );
-    ercd = cTECSInfo_findSignature( path, &desc );
-    if( ercd == E_OK ){
-        print_signature( p_cellcb, desc, 1 );
-    }
-    else{
-        printf( "signature %s not found\n", path );
-    }
-}
-
-static void
-print_cell_by_path( CELLCB *p_cellcb, char_t *path )
-{
-    Descriptor( nTECSInfo_sCellInfo )  desc;
-    ER    ercd;
-
-    printf( "print_cell_by_path( path=\"%s\" )\n", path );
-    ercd = cTECSInfo_findCell( path, &desc );
-    if( ercd == E_OK ){
-        print_cell( p_cellcb, desc, 1 );
-    }
-    else{
-        printf( "cell %s not found\n", path );
-    }
-}
 
 static void
 traverse_namespace( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sNamespaceInfo ) NSdesc, int level )
 {
+    /* それぞれのDescの子 */
     Descriptor( nTECSInfo_sNamespaceInfo ) NSdescChild;
     Descriptor( nTECSInfo_sCelltypeInfo )  CTdescChild;
     char  buf[ ATTR_NAME_LEN ];
     int   i, n;
 
+    /* 引数から持ってきたNSInfoセルのDescriptorを用いて動的結合 */
+    /* 最初は::のNamespace */
     cNSInfo_set_descriptor( NSdesc );
+    /* 動的結合したのでcNSInfoの関数が使用できる。bufに名前を格納 */
     cNSInfo_getName( buf, sizeof( buf ) );
     print_indent( level );
+
+    /* 最初は::が期待される */
     printf( "namespce '%s'\n", buf );
 
+    /* namespaceに属するcelltypeの数を取得 */
     n = cNSInfo_getNCelltype( );
     for( i = 0; i < n; i++ ){
+        /* i番目のセルタイプのDescを取得 */
         cNSInfo_getCelltypeInfo( i, &CTdescChild );
         print_celltype( p_cellcb, CTdescChild, level + 1 );
     }
 
+    /* namespaceに属するnamespaceの数を取得 */
     n = cNSInfo_getNNamespace( );
     for( i = 0; i < n; i++ ){
+        /* 自分のi番目のnamespceのDescをNSdescChildに取得 */
         cNSInfo_getNamespaceInfo( i, &NSdescChild );
+        /* NSdescChildを引数として再起呼び出し */
         traverse_namespace( p_cellcb, NSdescChild, level + 1 );
         cNSInfo_set_descriptor( NSdesc );    // reset dynamic call port each time
     }
 }
-
+static void
+print_celltype( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sCelltypeInfo )  CTdesc, int level )
+{
+    /* CTInfoセルに動的結合。cCTInfoが使用可能に */
+    cCelltypeInfo_set_descriptor( CTdesc );
+    /* celltypeの名前を取得 */
+    cCelltypeInfo_getName( VAR_name, ATTR_NAME_LEN );
+    print_indent( level );
+    printf( "celltype name = %s\n", VAR_name );
+}
 static void
 traverse_region( CELLCB *p_cellcb, Descriptor( nTECSInfo_sRegionInfo ) RGNdesc, int level )
 {
@@ -508,14 +503,37 @@ print_signature( CELLCB *p_cellcb, Descriptor( nTECSInfo_sSignatureInfo )  signa
     printf( "signature name = %s\n", VAR_name );
 }
 
-static void
-print_celltype( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sCelltypeInfo )  CTdesc, int level )
-{
 
-    cCelltypeInfo_set_descriptor( CTdesc );
-    cCelltypeInfo_getName( VAR_name, ATTR_NAME_LEN );
-    print_indent( level );
-    printf( "celltype name = %s\n", VAR_name );
+static void
+print_signature_by_path( CELLCB *p_cellcb, char_t *path )
+{
+    Descriptor( nTECSInfo_sSignatureInfo )  desc;
+    ER    ercd;
+
+    printf( "print_signature_by_path( path=\"%s\" )\n", path );
+    ercd = cTECSInfo_findSignature( path, &desc );
+    if( ercd == E_OK ){
+        print_signature( p_cellcb, desc, 1 );
+    }
+    else{
+        printf( "signature %s not found\n", path );
+    }
+}
+
+static void
+print_cell_by_path( CELLCB *p_cellcb, char_t *path )
+{
+    Descriptor( nTECSInfo_sCellInfo )  desc;
+    ER    ercd;
+
+    printf( "print_cell_by_path( path=\"%s\" )\n", path );
+    ercd = cTECSInfo_findCell( path, &desc );
+    if( ercd == E_OK ){
+        print_cell( p_cellcb, desc, 1 );
+    }
+    else{
+        printf( "cell %s not found\n", path );
+    }
 }
 
 void
