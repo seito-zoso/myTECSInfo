@@ -191,7 +191,7 @@ eBody_main(CELLIDX idx)
     printf( "started\n" );
 
     printf( "--- namespace traverse test ---\n" );
-    /* ルートディレクトリへのDescを取得 */
+    /* ルートNamespaceへのDescを取得 */
     if( cTECSInfo_findNamespace( "::", &NSdesc ) != E_OK ){
         printf( "Cannot find :: (root) namespace\n" );
         exit(1);
@@ -204,19 +204,26 @@ eBody_main(CELLIDX idx)
 
 
     printf( "--- region traverse test ---\n" );
+    /* ルートRegionへのDescを取得 */
     if( cTECSInfo_findRegion( "::", &RGNdesc ) != E_OK ){
         printf( "Cannot find :: (root) region\n" );
         exit(1);
     }
+    /* そのDescを用いてtraverse */
     traverse_region( p_cellcb, RGNdesc, 0 );
     printf( "---------\n" );
+    /* 結論：何ができるか
+     *  regionを指定すればそこにあるセルを探し出しVar,Attrを表示してくれる。
+     */
 
+    /* cellの名前を指定して情報を取ってくる。（便利） */
     printf( "--- cell by path test ---\n" );
     print_cell_by_path( p_cellcb, "Task" );
     print_cell_by_path( p_cellcb, "::Task" );
     print_cell_by_path( p_cellcb, "::rTEMP::TaskMain" );
     print_cell_by_path( p_cellcb, "::rTEMP::TECSInfo" );
 
+    /* signatureの名前を指定して情報を取ってくる。（名前だけ） */
     printf( "--- signatuer by path test ---\n" );
     print_signature_by_path( p_cellcb, "::sTask" );
 
@@ -277,6 +284,8 @@ print_celltype( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sCelltypeInfo )  CTdesc
     print_indent( level );
     printf( "celltype name = %s\n", VAR_name );
 }
+
+/* --------------------------------------------------------------------------------------- */
 static void
 traverse_region( CELLCB *p_cellcb, Descriptor( nTECSInfo_sRegionInfo ) RGNdesc, int level )
 {
@@ -305,7 +314,115 @@ traverse_region( CELLCB *p_cellcb, Descriptor( nTECSInfo_sRegionInfo ) RGNdesc, 
         cRegionInfo_set_descriptor( RGNdesc );    // reset dynamic call port each time
     }
 }
+/* cellの情報を表示 */
+static void
+print_cell( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sCellInfo )  CELLdesc, int level )
+{
+    Descriptor( nTECSInfo_sCelltypeInfo ) CTdesc;
+    void  *cbp, *inibp;
 
+    /* 動的接続 */
+    cCellInfo_set_descriptor( CELLdesc );
+    cCellInfo_getName( VAR_name, ATTR_NAME_LEN );
+
+    /* cellからcelltypeのDescを取ってくる */
+    cCellInfo_getCelltypeInfo( &CTdesc );
+    /* 動的接続 */
+    cCelltypeInfo_set_descriptor( CTdesc );
+    cCelltypeInfo_getName( VAR_name2, ATTR_NAME_LEN );
+
+    print_indent( level );
+    printf( "cell = %s celltype = %s\n", VAR_name, VAR_name2 );
+
+    cCellInfo_getCBP( &cbp );
+    cCellInfo_getINIBP( &inibp );
+    print_indent( level + 1 );
+    printf( "cbp = 0x%08x, inibp = 0x%08x\n", cbp, inibp );
+
+    print_cell_attr( p_cellcb, level + 1, inibp, cbp );
+    print_cell_var( p_cellcb, level + 1, inibp, cbp );
+
+    /* celltype info */
+    //print_celltype( p_cellcb, CTdesc, level + 1 );
+}
+/* ----- print_cellから呼び出し ----- */
+/* Attrについて */
+static void
+print_cell_attr( CELLCB *p_cellcb, int level, void *inibp, void *cbp )
+{
+    Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc;
+    int  i, n;
+    /* print_cell で既に動的接続済み */
+    n = cCelltypeInfo_getNAttr();
+    for( i = 0; i < n; i++ ){
+        /* 注目セルのcelltypeの各AttrのDescを格納 */
+        cCelltypeInfo_getAttrInfo( i, &Vdesc );
+        print_var_val( p_cellcb, level, inibp, cbp, Vdesc );
+    }
+}
+/* ----- print_cellから呼び出し ----- */
+/* Varについて */
+static void
+print_cell_var( CELLCB  *p_cellcb, int level, void *inibp, void *cbp )
+{
+    Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc;
+    int  i, n;
+    /* print_cell で既に動的接続済み */
+    n = cCelltypeInfo_getNVar();
+    for( i = 0; i < n; i++ ){
+        /* 注目セルの各VarのDescを格納 */
+        cCelltypeInfo_getVarInfo( i, &Vdesc );
+        print_var_val( p_cellcb, level, inibp, cbp, Vdesc );
+    }
+}
+/* print_cell_attr と print_cell_var から呼び出し */
+static void
+print_var_val( CELLCB   *p_cellcb, int level, void *base_or_inibp, void *cbp, Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc )
+{
+    uint32_t  offset;
+    int8_t    place;
+    void      *pval;
+    void      *base;
+    Descriptor( nTECSInfo_sTypeInfo ) Tdesc;
+
+    /* 動的接続 */
+    cVarDeclInfo_set_descriptor( Vdesc );
+    cVarDeclInfo_getName( VAR_name, ATTR_NAME_LEN );
+    /* 今は気にしない */
+    cVarDeclInfo_getLocationInfo( &offset, &place );
+    switch( place ){
+    case VARDECL_PLACE_STRUCT:
+    case VARDECL_PLACE_INIB:
+        base = base_or_inibp;
+        break;
+    case VARDECL_PLACE_CB:
+        base = cbp;
+        break;
+    case VARDECL_PLACE_NON:
+    default:
+        base = 0;
+    };
+
+    /* vardeclからtypeのDescを取ってくる */
+    cVarDeclInfo_getTypeInfo( &Tdesc );
+    /* 動的接続 */
+    cTypeInfo_set_descriptor( Tdesc );
+    cTypeInfo_getName( VAR_name2, ATTR_NAME_LEN );
+
+    print_indent( level );
+    printf( "%s %s = ", VAR_name2, VAR_name );
+    if( base ){
+        pval = base + offset;
+        print_type_val( p_cellcb, level, pval, Tdesc );
+        putchar( '\n' );
+    }
+    else {
+        printf( "(OMIT)\n" );
+    }
+
+}
+
+/* 変数や属性の値を取り出す */
 static void
 print_type_val( CELLCB  *p_cellcb, int level, void *ptr, Descriptor( nTECSInfo_sTypeInfo ) Tdesc )
 {
@@ -400,111 +517,6 @@ print_type_val( CELLCB  *p_cellcb, int level, void *ptr, Descriptor( nTECSInfo_s
 }
 
 static void
-print_var_val( CELLCB   *p_cellcb, int level, void *base_or_inibp, void *cbp, Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc )
-{
-    uint32_t  offset;
-    int8_t    place;
-    void      *pval;
-    void      *base;
-    Descriptor( nTECSInfo_sTypeInfo ) Tdesc;
-
-    cVarDeclInfo_set_descriptor( Vdesc );
-    cVarDeclInfo_getName( VAR_name, ATTR_NAME_LEN );
-    cVarDeclInfo_getLocationInfo( &offset, &place );
-    switch( place ){
-    case VARDECL_PLACE_STRUCT:
-    case VARDECL_PLACE_INIB:
-        base = base_or_inibp;
-        break;
-    case VARDECL_PLACE_CB:
-        base = cbp;
-        break;
-    case VARDECL_PLACE_NON:
-    default:
-        base = 0;
-    };
-
-    cVarDeclInfo_getTypeInfo( &Tdesc );
-    cTypeInfo_set_descriptor( Tdesc );
-    cTypeInfo_getName( VAR_name2, ATTR_NAME_LEN );
-
-    print_indent( level );
-    printf( "%s %s = ", VAR_name2, VAR_name );
-    if( base ){
-        pval = base + offset;
-        print_type_val( p_cellcb, level, pval, Tdesc );
-        putchar( '\n' );
-    }
-    else {
-        printf( "(OMIT)\n" );
-    }
-
-}
-
-static void
-print_cell_attr( CELLCB *p_cellcb, int level, void *inibp, void *cbp )
-{
-    Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc;
-    int  i, n;
-
-    n = cCelltypeInfo_getNAttr();
-    for( i = 0; i < n; i++ ){
-        cCelltypeInfo_getAttrInfo( i, &Vdesc );
-        print_var_val( p_cellcb, level, inibp, cbp, Vdesc );
-    }
-}
-
-static void
-print_cell_var( CELLCB  *p_cellcb, int level, void *inibp, void *cbp )
-{
-    Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc;
-    int  i, n;
-
-    n = cCelltypeInfo_getNVar();
-    for( i = 0; i < n; i++ ){
-        cCelltypeInfo_getVarInfo( i, &Vdesc );
-        print_var_val( p_cellcb, level, inibp, cbp, Vdesc );
-    }
-}
-
-static void
-print_cell( CELLCB  *p_cellcb, Descriptor( nTECSInfo_sCellInfo )  CELLdesc, int level )
-{
-    Descriptor( nTECSInfo_sCelltypeInfo ) CTdesc;
-    void  *cbp, *inibp;
-
-    cCellInfo_set_descriptor( CELLdesc );
-    cCellInfo_getName( VAR_name, ATTR_NAME_LEN );
-
-    cCellInfo_getCelltypeInfo( &CTdesc );
-    cCelltypeInfo_set_descriptor( CTdesc );
-    cCelltypeInfo_getName( VAR_name2, ATTR_NAME_LEN );
-
-    print_indent( level );
-    printf( "cell = %s celltype = %s\n", VAR_name, VAR_name2 );
-
-    cCellInfo_getCBP( &cbp );
-    cCellInfo_getINIBP( &inibp );
-    print_indent( level + 1 );
-    printf( "cbp = 0x%08x, inibp = 0x%08x\n", cbp, inibp );
-    print_cell_attr( p_cellcb, level + 1, inibp, cbp );
-    print_cell_var( p_cellcb, level + 1, inibp, cbp );
-
-    /* celltype info */
-    //print_celltype( p_cellcb, CTdesc, level + 1 );
-}
-
-static void
-print_signature( CELLCB *p_cellcb, Descriptor( nTECSInfo_sSignatureInfo )  signatureDesc, int level )
-{
-    cSignatureInfo_set_descriptor( signatureDesc );
-    cSignatureInfo_getName( VAR_name, ATTR_NAME_LEN );
-    print_indent( level );
-    printf( "signature name = %s\n", VAR_name );
-}
-
-
-static void
 print_signature_by_path( CELLCB *p_cellcb, char_t *path )
 {
     Descriptor( nTECSInfo_sSignatureInfo )  desc;
@@ -519,6 +531,16 @@ print_signature_by_path( CELLCB *p_cellcb, char_t *path )
         printf( "signature %s not found\n", path );
     }
 }
+
+static void
+print_signature( CELLCB *p_cellcb, Descriptor( nTECSInfo_sSignatureInfo )  signatureDesc, int level )
+{
+    cSignatureInfo_set_descriptor( signatureDesc );
+    cSignatureInfo_getName( VAR_name, ATTR_NAME_LEN );
+    print_indent( level );
+    printf( "signature name = %s\n", VAR_name );
+}
+
 
 static void
 print_cell_by_path( CELLCB *p_cellcb, char_t *path )
