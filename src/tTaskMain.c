@@ -182,6 +182,8 @@ print_signature( CELLCB *p_cellcb, Descriptor( nTECSInfo_sSignatureInfo )  signa
 static void
 print_function( CELLCB *p_cellcb, Descriptor( nTECSInfo_sFunctionInfo ) functionDesc, int level);
 static void
+print_param( CELLCB *p_cellcb, Descriptor( nTECSInfo_sParamInfo ) paramDesc, int level);
+static void
 print_celltype( CELLCB   *p_cellcb, Descriptor( nTECSInfo_sCelltypeInfo )  CTdesc, int level );
 static void
 print_var_val( CELLCB    *p_cellcb, int level, void *base_or_inibp, void *cbp, Descriptor( nTECSInfo_sVarDeclInfo ) Vdesc );
@@ -257,7 +259,7 @@ eBody_main(CELLIDX idx)
     /* signatureの名前を指定して情報を取ってくる。（名前だけ） */
     printf( "--- signatuer by path test ---\n" );
     print_signature_by_path( p_cellcb, "::sTask" );
-
+    print_signature_by_path( p_cellcb, "::sPutString" );
     // printf( "--- rawEntryDescriptor test ---\n" );
     // call_sTask( p_cellcb, "HelloWorld.eMain" );
     // call_sPutString( p_cellcb, "PutStringStdio.ePutString", "Hello World!\n" );
@@ -585,12 +587,32 @@ print_signature( CELLCB *p_cellcb, Descriptor( nTECSInfo_sSignatureInfo )  signa
 static void
 print_function( CELLCB *p_cellcb, Descriptor( nTECSInfo_sFunctionInfo ) functionDesc, int level)
 {
+    int n, i;
+    Descriptor( nTECSInfo_sParamInfo ) paramInfo;
     cFunctionInfo_set_descriptor( functionDesc );
     cFunctionInfo_getName( VAR_name, ATTR_NAME_LEN );
+    n = cFunctionInfo_getNParam();
     print_indent( level );
     printf( "function name = %s\n", VAR_name );
+    print_indent( level );
+    printf( "# of param = %d\n", n );
+    for(i = 0; i < n; i++){
+        cFunctionInfo_getParamInfo(i, &paramInfo);
+        print_param( p_cellcb, paramInfo, level + 1);
+    }
 }
-
+static void
+print_param( CELLCB *p_cellcb, Descriptor( nTECSInfo_sParamInfo ) paramDesc, int level)
+{
+    Descriptor( nTECSInfo_sTypeInfo ) typeInfo;
+    cParamInfo_set_descriptor( paramDesc );
+    cParamInfo_getName( VAR_name, ATTR_NAME_LEN );
+    cParamInfo_getTypeInfo( &typeInfo );
+    cTypeInfo_set_descriptor( typeInfo );
+    cTypeInfo_getName( VAR_name2, ATTR_NAME_LEN);
+    print_indent( level );
+    printf( "%s %s\n", VAR_name2, VAR_name );
+}
 
 // static void
 // print_cell_by_path( CELLCB *p_cellcb, char_t *path )
